@@ -1,0 +1,360 @@
+# Gemini Agent Team Controller
+
+Claude Code の Agent Teams 機能を **Gemini API + tmux** で再現するシステムです。
+
+## アーキテクチャ
+
+```
+┌─────────────────────┬─────────────────────┬─────────────────────┐
+│ 🎮 ORCHESTRATOR     │ 🧭 ANALYST          │ 📐 ARCHITECT        │
+│  パイプライン制御     │  要件整理ログ        │  設計ログ (リアルタイム) │
+│  ファイル変更監視     │  tail -f analyst.log│  tail -f architect.log│
+├─────────────────────┼─────────────────────┼─────────────────────┤
+│ 🔨 ENGINEER         │ 🔍 REVIEWER         │ 📊 STATUS           │
+│  実装ログ (リアルタイム) │  レビューログ        │  status.json 監視   │
+│  tail -f engineer.log│  tail -f reviewer.log│  tail -f status.json│
+└─────────────────────┴─────────────────────┴─────────────────────┘
+```
+
+### tmux レイアウトの説明
+
+- **左上: ORCHESTRATOR**  
+  `scripts/orchestrator.sh` が常駐し、TASK の変更監視とパイプライン制御を行います。
+- **中上: ANALYST**  
+  `logs/analyst.log` をリアルタイム表示（要件整理フェーズ）。
+- **右上: ARCHITECT**  
+  `logs/architect.log` をリアルタイム表示（設計フェーズの出力）。
+- **左下: ENGINEER**  
+  `logs/engineer.log` をリアルタイム表示（実装フェーズの出力）。
+- **中下: REVIEWER**  
+  `logs/reviewer.log` をリアルタイム表示（レビュー結果）。
+- **右下: STATUS**  
+  `logs/status.json` をリアルタイム表示（最新状態）。
+
+### パイプラインフロー
+
+```
+TASK.md (ユーザー入力)
+    │
+    ▼
+┌─────────┐
+│Analyst   │──→ REQUIREMENTS.md (要件整理)
+└─────────┘
+    │
+    ▼
+┌─────────┐
+│Architect │──→ PLAN.md (設計書)
+└─────────┘
+    │
+    ▼
+┌─────────┐
+│Engineer  │──→ CODE_DRAFT.md (コード)
+└─────────┘      ← REVIEW.md (フィードバックがあれば)
+    │
+    ▼
+┌─────────┐
+│Reviewer  │──→ REVIEW.md
+└─────────┘
+    │
+    ├─ LGTM → 完了！
+    └─ NEEDS_REVISION → Engineer に差し戻し（最大N回）
+```
+
+`ENABLE_DISCUSSION=true` の場合、Analyst と Architect の間にディスカッションが入ります。
+
+## セットアップ
+
+### 1. 必要なソフトウェア
+
+```bash
+# tmux (必須)
+sudo apt install tmux
+
+# Python 3 (必須)
+# ほとんどの環境にプリインストール済み
+
+# inotify-tools (推奨: 効率的なファイル監視)
+sudo apt install inotify-tools
+```
+
+### 2. Python パッケージ
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. 認証設定
+
+認証モードは **auto / api_key / vertex_ai / adc** の4つです。  
+デフォルトは `auto` で、次の順で自動判定します:
+
+1. `GEMINI_API_KEY` があれば **api_key**
+2. `GEMINI_GCP_PROJECT` / `GEMINI_GCP_LOCATION` があれば **vertex_ai**
+3. `GOOGLE_APPLICATION_CREDENTIALS` または gcloud ADC があれば **adc**
+
+#### モードA: API キー（Google AI Studio）
+
+個人開発者向け。[Google AI Studio](https://aistudio.google.com/apikey) で無料の API キーを取得できます。
+
+```bash
+export GEMINI_AUTH_MODE=api_key          # デフォルトなので省略可
+export GEMINI_API_KEY='your-api-key-here'
+```
+
+#### モードB: Vertex AI（Google Cloud）
+
+Google One AI Premium サブスクリプションや企業の Google Cloud 環境で利用する場合。
+
+```bash
+# gcloud CLI のインストールと認証
+gcloud auth application-default login
+
+export GEMINI_AUTH_MODE=vertex_ai
+export GEMINI_GCP_PROJECT='your-project-id'
+export GEMINI_GCP_LOCATION='us-central1'     # 省略可（デフォルト: us-central1）
+```
+
+#### モードC: ADC（Application Default Credentials）
+
+`gcloud auth application-default login` 済みの環境で利用します。  
+プロジェクトは `GEMINI_GCP_PROJECT` または gcloud の default project から取得されます。
+
+```bash
+gcloud auth application-default login
+export GEMINI_AUTH_MODE=adc
+
+# 明示的に指定したい場合
+export GEMINI_GCP_PROJECT='your-project-id'
+```
+
+### 4. 実行権限の付与
+
+```bash
+chmod +x start-agent-team.sh scripts/orchestrator.sh
+```
+
+### 5. Webhook 通知（任意）
+
+#### Generic（デフォルト）
+```bash
+export WEBHOOK_URL='https://example.com/webhook'
+export WEBHOOK_TEMPLATE=generic
+```
+
+#### Slack Incoming Webhook
+```bash
+export WEBHOOK_URL='https://hooks.slack.com/services/xxx/yyy/zzz'
+export WEBHOOK_TEMPLATE=slack
+```
+
+#### Discord Webhook
+```bash
+export WEBHOOK_URL='https://discord.com/api/webhooks/xxx/yyy'
+export WEBHOOK_TEMPLATE=discord
+```
+
+#### Microsoft Teams Webhook
+```bash
+export WEBHOOK_URL='https://outlook.office.com/webhook/xxx/yyy'
+export WEBHOOK_TEMPLATE=teams
+```
+
+#### Microsoft Teams Webhook (Adaptive Card)
+```bash
+export WEBHOOK_URL='https://outlook.office.com/webhook/xxx/yyy'
+export WEBHOOK_TEMPLATE=teams_adaptive
+```
+
+## 使い方
+
+### 起動
+
+```bash
+./start-agent-team.sh
+```
+
+
+tmux の4分割画面が立ち上がります。
+
+### ステータス確認
+
+```bash
+bash scripts/status.sh
+```
+
+### タスクの投入
+
+**方法A: 別ターミナルから**
+
+```bash
+cat > shared/TASK.md << 'EOF'
+Python で FizzBuzz を計算するクラスを作成してください。
+- 1から100までの数値を処理
+- 単体テスト（pytest）も含める
+- type hints を使用すること
+EOF
+```
+
+**方法B: tmux 内で**
+
+Orchestrator ペインで `Ctrl+C` して一時停止し、エディタで編集：
+
+```bash
+nano shared/TASK.md
+# 編集後、オーケストレータを再起動:
+bash scripts/orchestrator.sh watch
+```
+
+### タスクキューから自動取得（オプション）
+
+デフォルトで有効です。`tasks/inbox` に置かれたタスクを自動的に取得して処理します。  
+無効化する場合は `ENABLE_TASK_QUEUE=false` を設定してください。
+
+**優先度付け**: ファイル名に `P1_`〜`P9_` を付けると優先度で処理されます（数字が小さいほど優先）。
+
+```bash
+export ENABLE_TASK_QUEUE=true
+mkdir -p tasks/inbox tasks/archive
+
+# タスクを投入（ファイル名は任意）
+cat > tasks/inbox/P1_task-001.md << 'EOF'
+ログイン機能を追加して。
+EOF
+```
+
+### 設計ディスカッション（オプション）
+
+デフォルトで有効です。Analyst の要件整理後に  
+Architect/Engineer/Reviewer が `DISCUSSION.md` を通じて会話し、設計を深掘りします。
+
+```bash
+export ENABLE_DISCUSSION=true
+export DISCUSSION_ROUNDS=1
+```
+
+### 単発実行（ウォッチモードなし）
+
+```bash
+bash scripts/orchestrator.sh run
+```
+
+### 成果物の確認
+
+```bash
+cat shared/REQUIREMENTS.md  # 要件整理（Analyst）
+cat shared/DISCUSSION.md    # 設計ディスカッション（任意）
+cat shared/PLAN.md        # 設計書
+cat shared/CODE_DRAFT.md  # 生成されたコード
+cat shared/REVIEW.md      # レビュー結果
+```
+
+### 要件整理（Analyst）を単独で実行
+
+```bash
+python3 scripts/gemini_runner.py \
+  --role agents/analyst.md \
+  --input shared/TASK.md \
+  --output shared/REQUIREMENTS.md \
+  --log logs/analyst.log
+```
+
+## 設定
+
+`config.sh` で以下の項目を変更できます：
+
+| 変数名 | デフォルト値 | 説明 |
+|--------|-------------|------|
+| `GEMINI_AUTH_MODE` | `auto` | 認証モード (`auto` / `api_key` / `vertex_ai` / `adc`) |
+| `GEMINI_API_KEY` | - | API キー（`api_key` モード時に必須） |
+| `GEMINI_GCP_PROJECT` | - | GCP プロジェクトID（`vertex_ai` モード時に必須） |
+| `GEMINI_GCP_LOCATION` | `us-central1` | GCP リージョン（`vertex_ai` モード時） |
+| `GOOGLE_APPLICATION_CREDENTIALS` | - | ADC 用のサービスアカウントJSON（任意） |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | 使用するモデル |
+| `MAX_REVIEW_ITERATIONS` | `2` | レビューループの最大回数 |
+| `AGENT_TIMEOUT` | `180` | エージェントのタイムアウト（秒） |
+| `TASK_DEBOUNCE_SECONDS` | `0.5` | 監視イベント後の待機時間 |
+| `TASK_STABLE_CHECKS` | `2` | ハッシュが安定したと判断する回数 |
+| `TASK_STABLE_INTERVAL` | `0.5` | 安定判定のチェック間隔（秒） |
+| `WATCH_POLL_INTERVAL` | `2` | inotify 非対応時のポーリング間隔（秒） |
+| `SWARM_LOCK_FILE` | `logs/agent-team.lock` | 二重起動防止ロック |
+| `HISTORY_DIR` | `logs/runs` | 実行履歴の保存先 |
+| `KEEP_RUNS` | `20` | 履歴を保持する最大件数 |
+| `PIPELINE_RETRY_COUNT` | `1` | パイプライン再試行回数 |
+| `PIPELINE_RETRY_DELAY` | `3` | 再試行までの待機秒数 |
+| `ENABLE_ANALYST` | `true` | Analyst フェーズを有効化 |
+| `ENABLE_DISCUSSION` | `true` | 設計ディスカッションを有効化 |
+| `DISCUSSION_ROUNDS` | `1` | ディスカッション反復回数 |
+| `DISCUSSION_FILE` | `shared/DISCUSSION.md` | ディスカッション出力先 |
+| `ENABLE_TASK_QUEUE` | `true` | タスクキュー自動取得 |
+| `TASK_QUEUE_DIR` | `tasks/inbox` | タスク受け取りディレクトリ |
+| `TASK_QUEUE_ARCHIVE_DIR` | `tasks/archive` | 処理済みタスクの保存先 |
+| `TASK_QUEUE_PATTERN` | `*.md` | タスクファイルのパターン |
+| `TASK_QUEUE_PRIORITY_REGEX` | `^P([0-9])_` | 優先度判定の正規表現 |
+| `TASK_QUEUE_DEFAULT_PRIORITY` | `5` | 優先度のデフォルト値 |
+| `SWARM_SESSION` | `gemini-agent-team` | tmux セッション名 |
+| `REDACT_VALUES` | `GEMINI_API_KEY` | マスキング対象（カンマ区切り） |
+| `REDACT_REPLACEMENT` | `[REDACTED]` | マスキング置換文字 |
+| `WEBHOOK_URL` | - | 実行結果を通知するWebhook URL |
+| `WEBHOOK_TIMEOUT` | `5` | Webhook 通知タイムアウト（秒） |
+| `WEBHOOK_INCLUDE_TASK` | `false` | 通知にタスク先頭行を含めるか |
+| `WEBHOOK_TEMPLATE` | `generic` | `generic` / `slack` / `discord` / `teams` / `teams_adaptive` |
+| `UMASK_VALUE` | `077` | 生成ファイルのデフォルト権限 |
+| `SECURE_FILES` | `true` | ログ/履歴の権限を強制的に絞る |
+| `STATUS_FILE` | `logs/status.json` | 最新の実行状態を書き出すファイル |
+| `MAINTENANCE_MODE` | `false` | `true` の場合は実行を停止 |
+
+## ディレクトリ構成
+
+```
+gemini-agent-team/
+├── agents/                  # エージェントの役割定義（システムプロンプト）
+│   ├── analyst.md           #   要件整理担当
+│   ├── architect.md         #   設計担当
+│   ├── architect_discuss.md #   設計ディスカッション担当
+│   ├── engineer.md          #   実装担当
+│   ├── engineer_discuss.md  #   実装ディスカッション担当
+│   ├── reviewer.md          #   レビュー担当
+│   ├── reviewer_discuss.md  #   レビューディスカッション担当
+│   └── explorer.md          #   調査担当（拡張用）
+├── scripts/
+│   ├── gemini_runner.py     # Gemini API ラッパー（ストリーミング対応）
+│   └── orchestrator.sh      # パイプライン制御スクリプト
+├── shared/                  # エージェント間の共有ワークスペース
+│   ├── TASK.md              #   ユーザーの指示（入力）
+│   ├── REQUIREMENTS.md      #   要件整理（Analyst → Architect）
+│   ├── DISCUSSION.md         #   設計ディスカッション（任意）
+│   ├── PLAN.md              #   設計書（Architect → Engineer）
+│   ├── CODE_DRAFT.md        #   コード（Engineer → Reviewer）
+│   └── REVIEW.md            #   レビュー結果（Reviewer → Engineer）
+├── tasks/                   # タスクキュー（任意）
+│   ├── inbox/               #   取得待ちタスク
+│   └── archive/             #   処理済みタスク
+├── logs/                    # エージェントのリアルタイムログ
+├── config.sh                # 設定ファイル
+├── requirements.txt         # Python 依存パッケージ
+├── start-agent-team.sh      # 起動スクリプト
+└── spec.md                  # システム仕様書
+```
+
+## 元の仕様からの改善点
+
+| 項目 | 元の仕様 | 改善後 |
+|------|---------|--------|
+| ファイル監視 | `ls -l` ポーリング（不正確） | `md5sum` ハッシュ比較 + `inotifywait` 対応 |
+| パイプライン制御 | 各エージェントが独立監視 | 中央オーケストレータが制御 |
+| コンテキスト | 単一ファイルのみ入力 | 上流の全成果物を蓄積して渡す |
+| フィードバック | なし（一方通行） | Reviewer → Engineer のループ |
+| 出力 | 完了後に一括表示 | ストリーミングでリアルタイム表示 |
+| エラー処理 | なし | リトライ・タイムアウト・エラーメッセージ |
+| API呼び出し | 非ストリーミング | ストリーミング対応 |
+
+## tmux 操作チートシート
+
+| 操作 | キー |
+|------|------|
+| デタッチ（バックグラウンドに） | `Ctrl+B` → `D` |
+| 再アタッチ | `tmux attach -t gemini-agent-team` |
+| ペイン間移動 | `Ctrl+B` → 矢印キー |
+| セッション終了 | `tmux kill-session -t gemini-agent-team` |
+| ペインをズーム | `Ctrl+B` → `Z` |
+| スクロール | `Ctrl+B` → `[` → 矢印/PgUp/PgDn → `Q` で終了 |
