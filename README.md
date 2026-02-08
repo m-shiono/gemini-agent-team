@@ -34,26 +34,26 @@ Claude Code の Agent Teams 機能を **Gemini API + tmux** で再現するシ�
 ### パイプラインフロー
 
 ```
-TASK.md (ユーザー入力)
+shared/TASK.md (ユーザー入力)
     │
     ▼
 ┌─────────┐
-│Analyst   │──→ REQUIREMENTS.md (要件整理)
+│Analyst   │──→ shared/REQUIREMENTS.md (要件整理)
 └─────────┘
     │
     ▼
 ┌─────────┐
-│Architect │──→ PLAN.md (設計書)
+│Architect │──→ shared/PLAN.md (設計書)
 └─────────┘
     │
     ▼
 ┌─────────┐
-│Engineer  │──→ CODE_DRAFT.md (コード)
-└─────────┘      ← REVIEW.md (フィードバックがあれば)
+│Engineer  │──→ shared/CODE_DRAFT.md (コード)
+└─────────┘      ← shared/REVIEW.md (フィードバックがあれば)
     │
     ▼
 ┌─────────┐
-│Reviewer  │──→ REVIEW.md
+│Reviewer  │──→ shared/REVIEW.md
 └─────────┘
     │
     ├─ LGTM → 完了！
@@ -61,6 +61,7 @@ TASK.md (ユーザー入力)
 ```
 
 `ENABLE_DISCUSSION=true` の場合、Analyst と Architect の間にディスカッションが入ります。
+共有ファイルはすべてプロジェクト直下の `shared/` に固定です。
 
 ## セットアップ
 
@@ -251,7 +252,7 @@ EOF
 ### 設計ディスカッション（オプション）
 
 デフォルトでは無効です。Analyst の要件整理後に  
-Architect/Engineer/Reviewer が `DISCUSSION.md` を通じて会話し、設計を深掘りします。
+Architect/Engineer/Reviewer が `shared/DISCUSSION.md` を通じて会話し、設計を深掘りします。
 
 ```bash
 export ENABLE_DISCUSSION=true

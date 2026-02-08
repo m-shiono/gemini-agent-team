@@ -37,22 +37,22 @@ Claude Code の Agent Teams に相当する開発体験を、Gemini API と tmux
 ## パイプライン
 
 ```
-TASK.md (ユーザー入力)
+shared/TASK.md (ユーザー入力)
     │
     ▼
-Analyst    → REQUIREMENTS.md
+Analyst    → shared/REQUIREMENTS.md
     │
     ▼
-Discussion → DISCUSSION.md (任意)
+Discussion → shared/DISCUSSION.md (任意)
     │
     ▼
-Architect  → PLAN.md
+Architect  → shared/PLAN.md
     │
     ▼
-Engineer   → CODE_DRAFT.md
+Engineer   → shared/CODE_DRAFT.md
     │
     ▼
-Reviewer   → REVIEW.md
+Reviewer   → shared/REVIEW.md
 ```
 
 - Reviewer が `NEEDS_REVISION` を含む場合は Engineer に差し戻し。
@@ -61,6 +61,8 @@ Reviewer   → REVIEW.md
 ---
 
 ## 入出力・共有ファイル
+
+共有ファイルはすべてプロジェクト直下の `shared/` 配下に固定します。
 
 | ファイル | 用途 |
 | --- | --- |

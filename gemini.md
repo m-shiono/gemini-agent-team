@@ -28,5 +28,5 @@
 ## 重要な制約
 
 - `ENABLE_ANALYST` / `ENABLE_DISCUSSION` / `ENABLE_TASK_QUEUE` の設定に従う
-- 生成物は指定の共有ファイルにのみ書き込む
+- 生成物はプロジェクト直下の `shared/` 配下のみに書き込む（パス固定）
 
