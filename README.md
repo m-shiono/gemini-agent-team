@@ -133,6 +133,12 @@ export GEMINI_GCP_PROJECT='your-project-id'
 chmod +x start-agent-team.sh scripts/orchestrator.sh
 ```
 
+### 5. 簡易チェック（任意）
+
+```bash
+bash scripts/quickcheck.sh
+```
+
 ### 5. Webhook 通知（任意）
 
 #### Generic（デフォルト）
@@ -207,24 +213,44 @@ bash scripts/orchestrator.sh watch
 
 ### タスクキューから自動取得（オプション）
 
-デフォルトで有効です。`tasks/inbox` に置かれたタスクを自動的に取得して処理します。  
-無効化する場合は `ENABLE_TASK_QUEUE=false` を設定してください。
+デフォルトでは無効です。`tasks/inbox` に置かれたタスクを自動的に取得して処理します。  
+有効化する場合は `ENABLE_TASK_QUEUE=true` を設定してください。
 
-**優先度付け**: ファイル名に `P1_`〜`P9_` を付けると優先度で処理されます（数字が小さいほど優先）。
+**優先度付け**: ファイル名に `P1_`〜`P9_` を付けると優先度で処理されます（数字が小さいほど優先）。  
+YAML front-matter で `priority` を指定することもできます（ファイル名より優先）。
+`title`, `owner`, `due` も指定可能で、ステータスに反映されます。
+`owner` は `TASK_QUEUE_OWNER_FILTER` に一致するものだけを処理できます。
+`TASK_QUEUE_OWNER_SUBDIR=true` の場合は `tasks/inbox/<owner>/` も対象にします。
+`TASK_QUEUE_OWNER_PRIORITY_BIAS="alice=-1,bob=1"` のように担当者ごとに補正できます。
+`TASK_QUEUE_OWNER_AUTO_DIR=true` の場合、必要なサブディレクトリを自動作成します。
+期限超過時の動作は `TASK_QUEUE_OVERDUE_ACTION=warn|fail` で制御します。
+期限超過時の通知は `WEBHOOK_NOTIFY_OVERDUE=true` で制御します。
+期限超過専用の通知先は `WEBHOOK_OVERDUE_URL` で指定できます。
+期限超過時の再投入は `TASK_QUEUE_OVERDUE_REQUEUE=true` で制御します。
+
+**ステータス管理**: 取得されたタスクは `in-progress` に移動され、成功時は `done`、失敗時は `failed` に移動します。
+再投入したい場合は `TASK_QUEUE_REQUEUE_ON_FAILURE=true` を設定してください。
+失敗時は `.reason.md` が生成され、原因の概要が保存されます。
 
 ```bash
 export ENABLE_TASK_QUEUE=true
-mkdir -p tasks/inbox tasks/archive
+mkdir -p tasks/inbox tasks/in-progress tasks/done tasks/failed
 
 # タスクを投入（ファイル名は任意）
 cat > tasks/inbox/P1_task-001.md << 'EOF'
+---
+title: ログイン機能
+priority: 1
+owner: alice
+due: 2026-02-15
+---
 ログイン機能を追加して。
 EOF
 ```
 
 ### 設計ディスカッション（オプション）
 
-デフォルトで有効です。Analyst の要件整理後に  
+デフォルトでは無効です。Analyst の要件整理後に  
 Architect/Engineer/Reviewer が `DISCUSSION.md` を通じて会話し、設計を深掘りします。
 
 ```bash
@@ -260,6 +286,12 @@ python3 scripts/gemini_runner.py \
 
 ## 設定
 
+`config.sh` は `.env` があれば自動で読み込みます。  
+`./.env.example` を `.env` にコピーして値を設定してください。  
+別パスを使う場合は `ENV_FILE` を指定できます。
+
+詳細な設定手順は `docs/setup.md` を参照してください。
+
 `config.sh` で以下の項目を変更できます：
 
 | 変数名 | デフォルト値 | 説明 |
@@ -282,15 +314,37 @@ python3 scripts/gemini_runner.py \
 | `PIPELINE_RETRY_COUNT` | `1` | パイプライン再試行回数 |
 | `PIPELINE_RETRY_DELAY` | `3` | 再試行までの待機秒数 |
 | `ENABLE_ANALYST` | `true` | Analyst フェーズを有効化 |
-| `ENABLE_DISCUSSION` | `true` | 設計ディスカッションを有効化 |
+| `ENABLE_DISCUSSION` | `false` | 設計ディスカッションを有効化 |
 | `DISCUSSION_ROUNDS` | `1` | ディスカッション反復回数 |
 | `DISCUSSION_FILE` | `shared/DISCUSSION.md` | ディスカッション出力先 |
-| `ENABLE_TASK_QUEUE` | `true` | タスクキュー自動取得 |
+| `ENABLE_TASK_QUEUE` | `false` | タスクキュー自動取得 |
 | `TASK_QUEUE_DIR` | `tasks/inbox` | タスク受け取りディレクトリ |
-| `TASK_QUEUE_ARCHIVE_DIR` | `tasks/archive` | 処理済みタスクの保存先 |
 | `TASK_QUEUE_PATTERN` | `*.md` | タスクファイルのパターン |
 | `TASK_QUEUE_PRIORITY_REGEX` | `^P([0-9])_` | 優先度判定の正規表現 |
 | `TASK_QUEUE_DEFAULT_PRIORITY` | `5` | 優先度のデフォルト値 |
+| `TASK_QUEUE_YAML_PRIORITY_KEY` | `priority` | YAML の優先度キー |
+| `TASK_QUEUE_YAML_TITLE_KEY` | `title` | YAML のタイトルキー |
+| `TASK_QUEUE_YAML_OWNER_KEY` | `owner` | YAML の担当者キー |
+| `TASK_QUEUE_YAML_DUE_KEY` | `due` | YAML の期限キー |
+| `TASK_QUEUE_OWNER_FILTER` | - | 指定オーナーのみ処理 |
+| `TASK_QUEUE_DUE_WARN_DAYS` | `0` | 期限の警告日数 |
+| `TASK_QUEUE_DUE_WARN_HOURS` | `0` | 期限の警告時間（時間単位） |
+| `TASK_QUEUE_OWNER_PRIORITY_BIAS` | - | 担当者ごとの優先度補正 |
+| `TASK_QUEUE_DUE_FORMATS` | `%Y-%m-%d,%Y-%m-%d %H:%M` | 期限フォーマット |
+| `TASK_QUEUE_DUE_TZ` | `local` | 期限のタイムゾーン（例: `+09:00`） |
+| `TASK_QUEUE_OWNER_SUBDIR` | `false` | owner別サブディレクトリを有効化 |
+| `TASK_QUEUE_OWNER_AUTO_DIR` | `true` | ownerサブディレクトリ自動作成 |
+| `TASK_QUEUE_DUE_LABEL_PREFIX` | `DUE_` | 期限ラベルの接頭辞 |
+| `TASK_QUEUE_OVERDUE_ACTION` | `warn` | 期限超過時の動作（warn/fail） |
+| `TASK_QUEUE_OVERDUE_REQUEUE` | `false` | 期限超過時に再投入するか |
+| `WEBHOOK_NOTIFY_OVERDUE` | `false` | 期限超過時の通知 |
+| `WEBHOOK_OVERDUE_URL` | - | 期限超過通知のWebhook |
+| `TASK_QUEUE_INPROGRESS_DIR` | `tasks/in-progress` | 取り込み中タスク |
+| `TASK_QUEUE_DONE_DIR` | `tasks/done` | 完了タスク |
+| `TASK_QUEUE_FAILED_DIR` | `tasks/failed` | 失敗タスク |
+| `TASK_QUEUE_REQUEUE_ON_FAILURE` | `false` | 失敗時に再投入するか |
+| `TASK_QUEUE_RETRY_MAX` | `3` | 再投入の最大回数 |
+| `TASK_QUEUE_RETRY_BACKOFF_BASE` | `30` | 再投入の基準秒数 |
 | `SWARM_SESSION` | `gemini-agent-team` | tmux セッション名 |
 | `REDACT_VALUES` | `GEMINI_API_KEY` | マスキング対象（カンマ区切り） |
 | `REDACT_REPLACEMENT` | `[REDACTED]` | マスキング置換文字 |
@@ -298,6 +352,11 @@ python3 scripts/gemini_runner.py \
 | `WEBHOOK_TIMEOUT` | `5` | Webhook 通知タイムアウト（秒） |
 | `WEBHOOK_INCLUDE_TASK` | `false` | 通知にタスク先頭行を含めるか |
 | `WEBHOOK_TEMPLATE` | `generic` | `generic` / `slack` / `discord` / `teams` / `teams_adaptive` |
+| `WEBHOOK_INCLUDE_SUMMARY` | `true` | 完了時サマリを通知に含める |
+| `TASK_SUMMARY_MAX_CHARS` | `280` | サマリの最大文字数 |
+| `WEBHOOK_OWNER_MAP` | - | owner ごとの Webhook URL マップ |
+| `TASK_SECRET_ALLOW` | `false` | 机密情報検知を許可するか |
+| `TASK_SECRET_REGEX` | 既定パターン | 机密情報検知の正規表現 |
 | `UMASK_VALUE` | `077` | 生成ファイルのデフォルト権限 |
 | `SECURE_FILES` | `true` | ログ/履歴の権限を強制的に絞る |
 | `STATUS_FILE` | `logs/status.json` | 最新の実行状態を書き出すファイル |
@@ -328,25 +387,15 @@ gemini-agent-team/
 │   └── REVIEW.md            #   レビュー結果（Reviewer → Engineer）
 ├── tasks/                   # タスクキュー（任意）
 │   ├── inbox/               #   取得待ちタスク
-│   └── archive/             #   処理済みタスク
+│   ├── in-progress/         #   取り込み中
+│   ├── done/                #   完了
+│   ├── failed/              #   失敗
 ├── logs/                    # エージェントのリアルタイムログ
 ├── config.sh                # 設定ファイル
 ├── requirements.txt         # Python 依存パッケージ
 ├── start-agent-team.sh      # 起動スクリプト
-└── spec.md                  # システム仕様書
+└── docs/spec.md             # システム仕様書
 ```
-
-## 元の仕様からの改善点
-
-| 項目 | 元の仕様 | 改善後 |
-|------|---------|--------|
-| ファイル監視 | `ls -l` ポーリング（不正確） | `md5sum` ハッシュ比較 + `inotifywait` 対応 |
-| パイプライン制御 | 各エージェントが独立監視 | 中央オーケストレータが制御 |
-| コンテキスト | 単一ファイルのみ入力 | 上流の全成果物を蓄積して渡す |
-| フィードバック | なし（一方通行） | Reviewer → Engineer のループ |
-| 出力 | 完了後に一括表示 | ストリーミングでリアルタイム表示 |
-| エラー処理 | なし | リトライ・タイムアウト・エラーメッセージ |
-| API呼び出し | 非ストリーミング | ストリーミング対応 |
 
 ## tmux 操作チートシート
 
