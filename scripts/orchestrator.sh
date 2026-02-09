@@ -148,6 +148,20 @@ run_agent() {
     fi
 }
 
+# メイン成果物 + TASK.md の区切り分割（Architect/Engineer 用）
+# 区切り行 "--- TASK.md ---" があれば前半→main_file、後半→TASK.md に分割。なければ全体を main_file に。
+split_agent_output() {
+    local combined="$1" main_file="$2" task_file="$3"
+    if [[ ! -f "$combined" || ! -s "$combined" ]]; then return 1; fi
+    if grep -q '^--- TASK.md ---$' "$combined" 2>/dev/null; then
+        sed '/^--- TASK.md ---$/q' "$combined" | sed '$d' > "$main_file"
+        sed -n '/^--- TASK.md ---$/,$p' "$combined" | tail -n +2 > "$task_file"
+    else
+        cp "$combined" "$main_file"
+    fi
+    rm -f "$combined"
+}
+
 # Discussion 用: エージェント出力をファイルに追記
 run_agent_append() {
     local agent_name="$1" role_file="$2" output_file="$3"
@@ -248,11 +262,14 @@ run_pipeline() {
     [[ -s "$PROJECT_DIR/REQUIREMENTS.md" ]] && arch_in+=("$PROJECT_DIR/REQUIREMENTS.md")
     [[ -s "$DISCUSSION_FILE" ]]             && arch_in+=("$DISCUSSION_FILE")
 
+    local arch_out_tmp="$PROJECT_DIR/.architect_out.tmp"
     if ! run_agent "architect" "$AGENTS_DIR/architect.md" \
-            "$PROJECT_DIR/PLAN.md" "${arch_in[@]}"; then
+            "$arch_out_tmp" "${arch_in[@]}"; then
         log_error "パイプライン失敗: Architect フェーズ"
+        rm -f "$arch_out_tmp"
         return 1
     fi
+    split_agent_output "$arch_out_tmp" "$PROJECT_DIR/PLAN.md" "$PROJECT_DIR/TASK.md"
     echo ""
 
     # ── Phase 2 & 3: Engineer ⇄ Reviewer（実装＆レビューループ）──
@@ -261,6 +278,22 @@ run_pipeline() {
     while [[ $iteration -lt $MAX_REVIEW_ITERATIONS ]]; do
         iteration=$((iteration + 1))
 
+        # --- 設計の差し戻し: 前回レビューで NEEDS_DESIGN_REVISION なら Architect を再実行 ---
+        if [[ $iteration -gt 1 && -s "$PROJECT_DIR/REVIEW.md" ]] && grep -qi "NEEDS_DESIGN_REVISION" "$PROJECT_DIR/REVIEW.md" 2>/dev/null; then
+            log_info "📐 ${BOLD}設計の差し戻し: Architect を再実行（レビュー指摘を反映）${NC}"
+            local arch_rev_in=("$PROJECT_DIR/TASK.md")
+            [[ -s "$PROJECT_DIR/REQUIREMENTS.md" ]] && arch_rev_in+=("$PROJECT_DIR/REQUIREMENTS.md")
+            [[ -s "$DISCUSSION_FILE" ]]             && arch_rev_in+=("$DISCUSSION_FILE")
+            arch_rev_in+=("$PROJECT_DIR/REVIEW.md")
+
+            local arch_out_tmp2="$PROJECT_DIR/.architect_out.tmp"
+            if run_agent "architect" "$AGENTS_DIR/architect.md" "$arch_out_tmp2" "${arch_rev_in[@]}"; then
+                split_agent_output "$arch_out_tmp2" "$PROJECT_DIR/PLAN.md" "$PROJECT_DIR/TASK.md"
+            fi
+            rm -f "$arch_out_tmp2"
+            echo ""
+        fi
+
         # --- Engineer ---
         log_info "🔨 ${BOLD}Phase 2: 実装（Engineer）[${iteration}/${MAX_REVIEW_ITERATIONS}]${NC}"
         local eng_in=("$PROJECT_DIR/TASK.md" "$PROJECT_DIR/PLAN.md")
@@ -268,11 +301,14 @@ run_pipeline() {
         [[ -s "$DISCUSSION_FILE" ]]             && eng_in+=("$DISCUSSION_FILE")
         [[ -s "$PROJECT_DIR/REVIEW.md" ]]       && eng_in+=("$PROJECT_DIR/REVIEW.md")
 
+        local eng_out_tmp="$PROJECT_DIR/.engineer_out.tmp"
         if ! run_agent "engineer" "$AGENTS_DIR/engineer.md" \
-                "$PROJECT_DIR/CODE_DRAFT.md" "${eng_in[@]}"; then
+                "$eng_out_tmp" "${eng_in[@]}"; then
             log_error "パイプライン失敗: Engineer フェーズ"
+            rm -f "$eng_out_tmp"
             return 1
         fi
+        split_agent_output "$eng_out_tmp" "$PROJECT_DIR/CODE_DRAFT.md" "$PROJECT_DIR/TASK.md"
         echo ""
 
         # --- Reviewer ---

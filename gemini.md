@@ -46,7 +46,9 @@ Engineer → CODE_DRAFT.md（実装）
 Reviewer → REVIEW.md（レビュー）
     │
     ├─ LGTM → 完了
-    └─ NEEDS_REVISION → Engineer に差し戻し（最大 MAX_REVIEW_ITERATIONS 回）
+    ├─ NEEDS_REVISION → Engineer に差し戻し（指摘を反映して再実装）
+    └─ NEEDS_DESIGN_REVISION → Architect に差し戻し（設計を修正）→ 続けて Engineer → Reviewer
+    ※ 上記のループは最大 MAX_REVIEW_ITERATIONS 回まで
 ```
 
 ---
@@ -60,7 +62,7 @@ Reviewer → REVIEW.md（レビュー）
 | --- | --- | --- |
 | `REQUEST.md` | ユーザー | 生の要望・依頼内容 |
 | `REQUIREMENTS.md` | Analyst | 機能要件・非機能要件の定義 |
-| `TASK.md` | Analyst | 仕様検討後の構造化タスク一覧 |
+| `TASK.md` | Analyst が作成、Architect/Engineer が進捗更新 | 仕様検討後の構造化タスク一覧。フェーズ完了時に該当タスクを `[x]` に更新する |
 | `DISCUSSION.md` | Architect/Engineer/Reviewer | 設計ディスカッション（任意） |
 | `PLAN.md` | Architect | 技術設計書 |
 | `CODE_DRAFT.md` | Engineer | 実装コード |
@@ -95,6 +97,16 @@ gemini-agent-team/
 ├── config.sh
 └── gemini.md                # このファイル（共通指示）
 ```
+
+---
+
+## TASK.md の進捗管理
+
+- **Analyst**: 初回作成（全タスクを `[ ]` で記載）。
+- **Architect**: 設計書（PLAN.md）を出したら、TASK.md の「設計」フェーズに該当するタスクを `[x]` に更新して出力に含める。
+- **Engineer**: 実装（CODE_DRAFT.md）を出したら、TASK.md の「実装」フェーズに該当するタスクを `[x]` に更新して出力に含める。
+
+Architect と Engineer は、メイン成果物（PLAN.md / CODE_DRAFT.md）の直後に**1行だけ**区切り `--- TASK.md ---` を書き、その後に更新した TASK.md の全文を続ける。オーケストレータがこの区切りで分割し、それぞれのファイルに保存する。
 
 ---
 
