@@ -2,8 +2,6 @@
 # ============================================================
 # Gemini Agent Team - Quick Check
 # ============================================================
-# ローカルで最低限の構文チェックを行う。
-# ============================================================
 
 set -euo pipefail
 
@@ -13,20 +11,28 @@ echo "== Quick Check =="
 echo ""
 
 echo "[shell] checking..."
-bash -n "$ROOT_DIR/scripts/orchestrator.sh"
-bash -n "$ROOT_DIR/scripts/status.sh"
-bash -n "$ROOT_DIR/start-agent-team.sh"
 bash -n "$ROOT_DIR/config.sh"
-echo "shell: OK"
+bash -n "$ROOT_DIR/start-agent-team.sh"
+bash -n "$ROOT_DIR/scripts/orchestrator.sh"
+bash -n "$ROOT_DIR/scripts/gemini_runner.sh"
+bash -n "$ROOT_DIR/scripts/status.sh"
+echo "  shell: OK"
 
-echo "[python] checking..."
-python3 - <<'PY' "$ROOT_DIR/scripts/gemini_runner.py"
-import ast, sys
-path = sys.argv[1]
-with open(path, "r") as f:
-    ast.parse(f.read())
-print("python: OK")
-PY
+echo "[gemini CLI] checking..."
+if command -v gemini &>/dev/null; then
+    echo "  gemini: OK ($(gemini --version 2>/dev/null || echo 'installed'))"
+else
+    echo "  gemini: NOT FOUND - npm install -g @google/gemini-cli"
+    exit 1
+fi
+
+echo "[tmux] checking..."
+if command -v tmux &>/dev/null; then
+    echo "  tmux: OK"
+else
+    echo "  tmux: NOT FOUND"
+    exit 1
+fi
 
 echo ""
 echo "Quick Check: PASS"

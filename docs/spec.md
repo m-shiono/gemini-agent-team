@@ -13,7 +13,7 @@ Claude Code の Agent Teams に相当する開発体験を、Gemini API と tmux
 ## 全体構成
 
 - **Orchestrator**: パイプライン制御と監視
-- **Analyst**: ふわっとした要件をシステム仕様に落とし込み（機能/非機能）
+- **Analyst**: ふわっとした要件を仕様検討・タスク分解
 - **Architect**: 設計書の作成
 - **Engineer**: 実装の作成
 - **Reviewer**: レビューと差し戻し
@@ -37,22 +37,23 @@ Claude Code の Agent Teams に相当する開発体験を、Gemini API と tmux
 ## パイプライン
 
 ```
-shared/TASK.md (ユーザー入力)
+project/<プロジェクト名>/REQUEST.md (ユーザーの要望)
     │
     ▼
-Analyst    → shared/REQUIREMENTS.md
+Analyst    → REQUIREMENTS.md (要件定義)
+           → TASK.md (タスク分解)
     │
     ▼
-Discussion → shared/DISCUSSION.md (任意)
+Discussion → DISCUSSION.md (任意)
     │
     ▼
-Architect  → shared/PLAN.md
+Architect  → PLAN.md (設計書)
     │
     ▼
-Engineer   → shared/CODE_DRAFT.md
+Engineer   → CODE_DRAFT.md (実装)
     │
     ▼
-Reviewer   → shared/REVIEW.md
+Reviewer   → REVIEW.md (レビュー)
 ```
 
 - Reviewer が `NEEDS_REVISION` を含む場合は Engineer に差し戻し。
@@ -60,18 +61,19 @@ Reviewer   → shared/REVIEW.md
 
 ---
 
-## 入出力・共有ファイル
+## 入出力・プロジェクトファイル
 
-共有ファイルはすべてプロジェクト直下の `shared/` 配下に固定します。
+各プロジェクトのファイルは `project/<プロジェクト名>/` 配下に配置されます。
 
 | ファイル | 用途 |
 | --- | --- |
-| `shared/TASK.md` | ユーザーの指示 |
-| `shared/REQUIREMENTS.md` | Analyst のシステム仕様 |
-| `shared/DISCUSSION.md` | 設計ディスカッション（任意） |
-| `shared/PLAN.md` | Architect の設計書 |
-| `shared/CODE_DRAFT.md` | Engineer の実装 |
-| `shared/REVIEW.md` | Reviewer のレビュー |
+| `REQUEST.md` | ユーザーの要望（生の依頼内容） |
+| `REQUIREMENTS.md` | Analyst の要件定義 |
+| `TASK.md` | Analyst のタスク分解（仕様検討後の構造化タスク） |
+| `DISCUSSION.md` | 設計ディスカッション（任意） |
+| `PLAN.md` | Architect の設計書 |
+| `CODE_DRAFT.md` | Engineer の実装 |
+| `REVIEW.md` | Reviewer のレビュー |
 
 ---
 
@@ -90,9 +92,9 @@ Reviewer   → shared/REVIEW.md
 - ステータス出力
 - メンテナンスモード
 
-### `scripts/gemini_runner.py`
+### `scripts/gemini_runner.sh`
 
-- Gemini SDK 呼び出し
+- Gemini CLI 呼び出し
 - 認証モードの自動判定（`auto`）
 - ストリーミング出力
 - ログのマスキング
@@ -195,6 +197,7 @@ YAML front-matter で `title`, `owner`, `due` を指定できます。
 
 | 変数 | 役割 |
 | --- | --- |
+| `PROJECT_NAME` | プロジェクト名 |
 | `GEMINI_AUTH_MODE` | 認証モード |
 | `GEMINI_API_KEY` | API キー |
 | `GEMINI_GCP_PROJECT` | Vertex AI プロジェクト |
@@ -210,4 +213,3 @@ YAML front-matter で `title`, `owner`, `due` を指定できます。
 | `TASK_QUEUE_YAML_PRIORITY_KEY` | YAML の優先度キー |
 | `TASK_QUEUE_YAML_TITLE_KEY` | YAML のタイトルキー |
 | `TASK_QUEUE_REQUEUE_ON_FAILURE` | 失敗時の再投入 |
-

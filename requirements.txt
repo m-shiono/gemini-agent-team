@@ -1,1 +1,6 @@
-google-genai>=1.0.0
+# Gemini Agent Team
+#
+# 主な依存: Gemini CLI (Node.js)
+#   npm install -g @google/gemini-cli
+#
+# Python パッケージは不要です。

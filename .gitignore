@@ -3,6 +3,7 @@
 
 # Runtime outputs
 logs/
+project/
 shared/
 tasks/
 
